@@ -151,6 +151,14 @@ public class Book {
         copiesSold = Math.max(0, copiesSold - quantity);
     }
 
+    /**
+     * Replaces the denormalised review summary shown on listings. The average is kept to two decimal places.
+     */
+    public void updateReviewSummary(double averageRating, int totalReviews) {
+        this.averageRating = Math.round(averageRating * 100.0) / 100.0;
+        this.totalReviews = totalReviews;
+    }
+
     public Long getId() {
         return id;
     }

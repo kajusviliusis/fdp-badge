@@ -10,6 +10,11 @@ public enum OrderStatus {
     DELIVERED,
     CANCELLED;
 
+    /** Whether payment has been taken and the order has not been cancelled. */
+    public boolean isPaid() {
+        return this == CONFIRMED || this == SHIPPED || this == DELIVERED;
+    }
+
     /** Whether the customer may still cancel from this state, subject to the cancellation window. */
     public boolean isCancellable() {
         return this == PENDING_PAYMENT || this == CONFIRMED;
