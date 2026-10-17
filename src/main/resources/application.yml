@@ -13,6 +13,7 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+        default_batch_fetch_size: 50
   jackson:
     default-property-inclusion: non_null
 
@@ -21,6 +22,8 @@ bookworm:
     tax-rate: 0.12
     free-delivery-threshold: 500.00
     delivery-charge: 40.00
+  gift-points:
+    rupees-per-point: 10
 
 server:
   address: 127.0.0.1

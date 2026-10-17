@@ -11,4 +11,9 @@ public record PriceBreakdown(BigDecimal subtotal, BigDecimal tax, BigDecimal del
     public BigDecimal total() {
         return subtotal.add(tax).add(deliveryCharges);
     }
+
+    /** The amount payable once {@code discount} has been taken off the {@linkplain #total() total}. */
+    public BigDecimal totalAfter(BigDecimal discount) {
+        return total().subtract(discount);
+    }
 }

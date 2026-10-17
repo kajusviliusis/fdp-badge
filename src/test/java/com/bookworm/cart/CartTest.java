@@ -112,6 +112,30 @@ class CartTest {
         assertThat(cart.subtotal()).isEqualByComparingTo("0");
     }
 
+    @Test
+    void addAvailableAddsOnlyWhatStockAllows() {
+        Book book = book(1L, "10.00", 3);
+
+        assertThat(cart.addAvailable(book, 5)).isEqualTo(3);
+        assertThat(cart.addAvailable(book, 2)).isZero();
+        assertThat(cart.getItems().get(0).getQuantity()).isEqualTo(3);
+    }
+
+    @Test
+    void addAvailableRespectsPerBookLimit() {
+        Book book = book(1L, "10.00", 500);
+        cart.addBook(book, 95);
+
+        assertThat(cart.addAvailable(book, 10)).isEqualTo(4);
+        assertThat(cart.getItems().get(0).getQuantity()).isEqualTo(99);
+    }
+
+    @Test
+    void addAvailableSkipsOutOfStockBook() {
+        assertThat(cart.addAvailable(book(1L, "10.00", 0), 2)).isZero();
+        assertThat(cart.getItems()).isEmpty();
+    }
+
     private static Book book(Long id, String price, int stock) {
         Book book = Book.builder("Title " + id, "Author", new BigDecimal(price),
                 new Category("Fiction"), new Publisher("Publisher")).stockQuantity(stock).build();

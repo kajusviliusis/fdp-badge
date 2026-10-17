@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 import com.bookworm.category.Category;
+import com.bookworm.common.error.BusinessRuleException;
 import com.bookworm.publisher.Publisher;
 
 import jakarta.persistence.Column;
@@ -18,6 +19,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -81,6 +83,10 @@ public class Book {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /** Guards stock against lost updates when concurrent orders compete for the last copies. */
+    @Version
+    private long version;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
@@ -115,6 +121,24 @@ public class Book {
 
     public boolean isInStock() {
         return stockQuantity > 0;
+    }
+
+    /**
+     * Takes copies out of stock for an order.
+     *
+     * @throws BusinessRuleException if fewer than {@code quantity} copies are available
+     */
+    public void reserveStock(int quantity) {
+        if (quantity > stockQuantity) {
+            throw new BusinessRuleException(
+                    "Only %d copies of '%s' are in stock.".formatted(stockQuantity, title));
+        }
+        stockQuantity -= quantity;
+    }
+
+    /** Returns copies to stock, e.g. when an order is cancelled. */
+    public void restock(int quantity) {
+        stockQuantity += quantity;
     }
 
     public Long getId() {

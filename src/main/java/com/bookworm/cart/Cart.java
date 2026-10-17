@@ -68,6 +68,22 @@ public class Cart {
     }
 
     /**
+     * Adds as many of the requested copies as limits and stock allow, without failing when some cannot be added.
+     *
+     * @return the number of copies actually added, possibly zero
+     */
+    public int addAvailable(Book book, int quantity) {
+        int current = findItem(book.getId()).map(CartItem::getQuantity).orElse(0);
+        int room = Math.min(MAX_QUANTITY_PER_BOOK, book.getStockQuantity()) - current;
+        int toAdd = Math.min(quantity, room);
+        if (toAdd <= 0) {
+            return 0;
+        }
+        addBook(book, toAdd);
+        return toAdd;
+    }
+
+    /**
      * Sets the quantity of a book that is already in the cart.
      *
      * @throws ResourceNotFoundException if the book is not in the cart
