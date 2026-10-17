@@ -1,5 +1,6 @@
 package com.bookworm.payment;
 
+import static com.bookworm.support.TestAuth.user;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
@@ -17,18 +18,20 @@ import java.math.BigDecimal;
 import com.bookworm.common.error.BusinessRuleException;
 import com.bookworm.common.error.ForbiddenException;
 import com.bookworm.common.error.ResourceNotFoundException;
+import com.bookworm.support.WebSecurityTestConfig;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(PaymentController.class)
+@Import(WebSecurityTestConfig.class)
 class PaymentControllerTest {
 
-    private static final String USER = "X-User-Id";
     private static final String URL = "/orders/1001/payment";
     private static final String CARD_BODY = """
             {"method":"CREDIT_CARD","cardDetails":{"cardNumber":"4111111111111111","nameOnCard":"Arjun Patel",
@@ -49,7 +52,7 @@ class PaymentControllerTest {
     void payReturns200WithPayment() throws Exception {
         given(paymentService.pay(any(), any(), any())).willReturn(payment(PaymentStatus.SUCCESS));
 
-        mockMvc.perform(post(URL).header(USER, "7").contentType(MediaType.APPLICATION_JSON).content(CARD_BODY))
+        mockMvc.perform(post(URL).with(user(7)).contentType(MediaType.APPLICATION_JSON).content(CARD_BODY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.orderId").value(1001))
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
@@ -64,7 +67,7 @@ class PaymentControllerTest {
     void declinedPaymentIsStill200WithFailedStatus() throws Exception {
         given(paymentService.pay(any(), any(), any())).willReturn(payment(PaymentStatus.FAILED));
 
-        mockMvc.perform(post(URL).header(USER, "7").contentType(MediaType.APPLICATION_JSON).content(CARD_BODY))
+        mockMvc.perform(post(URL).with(user(7)).contentType(MediaType.APPLICATION_JSON).content(CARD_BODY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("FAILED"));
     }
@@ -73,14 +76,14 @@ class PaymentControllerTest {
     void walletNeedsNoDetails() throws Exception {
         given(paymentService.pay(any(), any(), any())).willReturn(payment(PaymentStatus.SUCCESS));
 
-        mockMvc.perform(post(URL).header(USER, "7").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post(URL).with(user(7)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"method\":\"WALLET\"}"))
                 .andExpect(status().isOk());
     }
 
     @Test
     void methodIsRequired() throws Exception {
-        mockMvc.perform(post(URL).header(USER, "7").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        mockMvc.perform(post(URL).with(user(7)).contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("method"));
 
@@ -89,7 +92,7 @@ class PaymentControllerTest {
 
     @Test
     void cardMethodRequiresCardDetails() throws Exception {
-        mockMvc.perform(post(URL).header(USER, "7").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post(URL).with(user(7)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"method\":\"DEBIT_CARD\"}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.fieldErrors[0].message").value("cardDetails are required for card payments"));
@@ -99,7 +102,7 @@ class PaymentControllerTest {
 
     @Test
     void upiMethodRequiresUpiDetails() throws Exception {
-        mockMvc.perform(post(URL).header(USER, "7").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post(URL).with(user(7)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"method\":\"UPI\"}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.fieldErrors[0].message").value("upiDetails are required for UPI payments"));
@@ -113,7 +116,7 @@ class PaymentControllerTest {
                 {"method":"CREDIT_CARD","cardDetails":{"cardNumber":"4111-1111","nameOnCard":"Arjun Patel",
                 "cvv":"9","expiryDate":"12/2030"}}""";
 
-        mockMvc.perform(post(URL).header(USER, "7").contentType(MediaType.APPLICATION_JSON).content(body))
+        mockMvc.perform(post(URL).with(user(7)).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(content().string(not(containsString("4111-1111"))))
                 .andExpect(content().string(not(containsString("\"9\""))));
@@ -123,7 +126,7 @@ class PaymentControllerTest {
 
     @Test
     void invalidUpiIdIsRejected() throws Exception {
-        mockMvc.perform(post(URL).header(USER, "7").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post(URL).with(user(7)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"method\":\"UPI\",\"upiDetails\":{\"upiId\":\"nope\"}}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(content().string(not(containsString("nope"))));
@@ -134,7 +137,7 @@ class PaymentControllerTest {
         given(paymentService.pay(any(), any(), any()))
                 .willThrow(new BusinessRuleException("Order is not awaiting payment; its status is CONFIRMED."));
 
-        mockMvc.perform(post(URL).header(USER, "7").contentType(MediaType.APPLICATION_JSON).content(CARD_BODY))
+        mockMvc.perform(post(URL).with(user(7)).contentType(MediaType.APPLICATION_JSON).content(CARD_BODY))
                 .andExpect(status().isBadRequest());
     }
 
@@ -142,7 +145,7 @@ class PaymentControllerTest {
     void anotherUsersOrderMapsTo403() throws Exception {
         given(paymentService.pay(any(), any(), any())).willThrow(new ForbiddenException("Not your order."));
 
-        mockMvc.perform(post(URL).header(USER, "7").contentType(MediaType.APPLICATION_JSON).content(CARD_BODY))
+        mockMvc.perform(post(URL).with(user(7)).contentType(MediaType.APPLICATION_JSON).content(CARD_BODY))
                 .andExpect(status().isForbidden());
     }
 
@@ -156,7 +159,7 @@ class PaymentControllerTest {
     void getReturnsPayment() throws Exception {
         given(paymentService.get(7L, 1001L)).willReturn(payment(PaymentStatus.SUCCESS));
 
-        mockMvc.perform(get(URL).header(USER, "7"))
+        mockMvc.perform(get(URL).with(user(7)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.method").value("CREDIT_CARD"));
@@ -166,7 +169,7 @@ class PaymentControllerTest {
     void getWithoutPaymentMapsTo404() throws Exception {
         given(paymentService.get(7L, 1001L)).willThrow(new ResourceNotFoundException("No payment yet."));
 
-        mockMvc.perform(get(URL).header(USER, "7"))
+        mockMvc.perform(get(URL).with(user(7)))
                 .andExpect(status().isNotFound());
     }
 }

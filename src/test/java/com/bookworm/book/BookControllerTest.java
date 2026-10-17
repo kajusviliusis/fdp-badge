@@ -1,5 +1,6 @@
 package com.bookworm.book;
 
+import static com.bookworm.support.TestAuth.user;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -16,15 +17,18 @@ import com.bookworm.category.CategoryResponse;
 import com.bookworm.common.error.ResourceNotFoundException;
 import com.bookworm.common.page.PageResponse;
 import com.bookworm.publisher.PublisherResponse;
+import com.bookworm.support.WebSecurityTestConfig;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(BookController.class)
+@Import(WebSecurityTestConfig.class)
 class BookControllerTest {
 
     @Autowired
@@ -87,7 +91,7 @@ class BookControllerTest {
 
     @Test
     void unsupportedMethodReturns405() throws Exception {
-        mockMvc.perform(post("/books"))
+        mockMvc.perform(post("/books").with(user(7)))
                 .andExpect(status().isMethodNotAllowed());
     }
 

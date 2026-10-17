@@ -1,5 +1,7 @@
 package com.bookworm.category;
 
+import static com.bookworm.support.TestAuth.admin;
+import static com.bookworm.support.TestAuth.user;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,15 +12,18 @@ import java.util.List;
 
 import com.bookworm.common.error.ConflictException;
 import com.bookworm.common.error.ResourceNotFoundException;
+import com.bookworm.support.WebSecurityTestConfig;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(CategoryController.class)
+@Import(WebSecurityTestConfig.class)
 class CategoryControllerTest {
 
     @Autowired
@@ -48,14 +53,14 @@ class CategoryControllerTest {
     void createReturns201() throws Exception {
         given(categoryService.create(new CategoryRequest("Science"))).willReturn(new CategoryResponse(2L, "Science"));
 
-        mockMvc.perform(post("/categories").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Science\"}"))
+        mockMvc.perform(post("/categories").with(admin(1)).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Science\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(2));
     }
 
     @Test
     void createReturns422ForShortName() throws Exception {
-        mockMvc.perform(post("/categories").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"A\"}"))
+        mockMvc.perform(post("/categories").with(admin(1)).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"A\"}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("name"))
                 .andExpect(jsonPath("$.fieldErrors[0].rejectedValue").value("A"));
@@ -63,7 +68,7 @@ class CategoryControllerTest {
 
     @Test
     void createReturns400ForMalformedJson() throws Exception {
-        mockMvc.perform(post("/categories").contentType(MediaType.APPLICATION_JSON).content("{"))
+        mockMvc.perform(post("/categories").with(admin(1)).contentType(MediaType.APPLICATION_JSON).content("{"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -71,7 +76,22 @@ class CategoryControllerTest {
     void createReturns409WhenDuplicate() throws Exception {
         given(categoryService.create(new CategoryRequest("Fiction"))).willThrow(new ConflictException("exists"));
 
-        mockMvc.perform(post("/categories").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Fiction\"}"))
+        mockMvc.perform(post("/categories").with(admin(1)).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Fiction\"}"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void createRequiresAuthentication() throws Exception {
+        mockMvc.perform(post("/categories").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Science\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    void createIsForbiddenForCustomers() throws Exception {
+        mockMvc.perform(post("/categories").with(user(7)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Science\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
     }
 }

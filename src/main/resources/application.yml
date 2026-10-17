@@ -18,6 +18,11 @@ spring:
     default-property-inclusion: non_null
 
 bookworm:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:}
+      access-token-ttl: PT1H
+      issuer: bookworm-api
   pricing:
     tax-rate: 0.12
     free-delivery-threshold: 500.00

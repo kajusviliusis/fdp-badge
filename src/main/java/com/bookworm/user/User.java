@@ -1,9 +1,13 @@
 package com.bookworm.user;
 
+import java.util.Locale;
+
 import com.bookworm.common.error.BusinessRuleException;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -11,7 +15,8 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 /**
- * Registered customer. Registration, authentication and profile management are added with the auth increment.
+ * A registered user: a customer, or an administrator who may also manage the catalog's categories and publishers.
+ * Only the password <em>hash</em> is stored.
  */
 @Entity
 @Table(name = "users")
@@ -30,6 +35,10 @@ public class User {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Role role = Role.CUSTOMER;
+
     @Column(name = "gift_points", nullable = false)
     private int giftPoints;
 
@@ -41,8 +50,30 @@ public class User {
     }
 
     public User(String name, String email, String passwordHash) {
+        this(name, email, passwordHash, Role.CUSTOMER);
+    }
+
+    public User(String name, String email, String passwordHash, Role role) {
         this.name = name;
-        this.email = email;
+        this.email = normalizeEmail(email);
+        this.passwordHash = passwordHash;
+        this.role = role;
+    }
+
+    /** Email addresses are compared case-insensitively, so they are always stored trimmed and in lower case. */
+    public static String normalizeEmail(String email) {
+        return email.strip().toLowerCase(Locale.ROOT);
+    }
+
+    public void rename(String name) {
+        this.name = name;
+    }
+
+    public void changeEmail(String email) {
+        this.email = normalizeEmail(email);
+    }
+
+    public void changePasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
     }
 
@@ -83,6 +114,10 @@ public class User {
 
     public String getPasswordHash() {
         return passwordHash;
+    }
+
+    public Role getRole() {
+        return role;
     }
 
     public int getGiftPoints() {

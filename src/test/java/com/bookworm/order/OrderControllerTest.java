@@ -1,5 +1,6 @@
 package com.bookworm.order;
 
+import static com.bookworm.support.TestAuth.user;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
@@ -18,18 +19,20 @@ import com.bookworm.common.error.BusinessRuleException;
 import com.bookworm.common.error.ForbiddenException;
 import com.bookworm.common.error.ResourceNotFoundException;
 import com.bookworm.common.page.PageResponse;
+import com.bookworm.support.WebSecurityTestConfig;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(OrderController.class)
+@Import(WebSecurityTestConfig.class)
 class OrderControllerTest {
 
-    private static final String USER = "X-User-Id";
     private static final Instant CREATED = Instant.parse("2025-03-01T12:00:00Z");
 
     @Autowired
@@ -54,7 +57,7 @@ class OrderControllerTest {
     void createReturns201WithOrder() throws Exception {
         given(checkoutService.placeOrder(any(), any())).willReturn(order());
 
-        mockMvc.perform(post("/orders").header(USER, "7").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/orders").with(user(7)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"addressId\":5,\"giftPointsToRedeem\":50}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(1001))
@@ -67,14 +70,14 @@ class OrderControllerTest {
 
     @Test
     void createRequiresAddressId() throws Exception {
-        mockMvc.perform(post("/orders").header(USER, "7").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        mockMvc.perform(post("/orders").with(user(7)).contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("addressId"));
     }
 
     @Test
     void createRejectsNegativeGiftPoints() throws Exception {
-        mockMvc.perform(post("/orders").header(USER, "7").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/orders").with(user(7)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"addressId\":5,\"giftPointsToRedeem\":-1}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("giftPointsToRedeem"));
@@ -84,7 +87,7 @@ class OrderControllerTest {
     void createMapsBusinessRuleTo400() throws Exception {
         given(checkoutService.placeOrder(any(), any())).willThrow(new BusinessRuleException("Cannot place an order with an empty cart."));
 
-        mockMvc.perform(post("/orders").header(USER, "7").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/orders").with(user(7)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"addressId\":5}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Cannot place an order with an empty cart."));
@@ -94,7 +97,7 @@ class OrderControllerTest {
     void createMapsUnknownAddressTo404() throws Exception {
         given(checkoutService.placeOrder(any(), any())).willThrow(ResourceNotFoundException.of("Address", 5L));
 
-        mockMvc.perform(post("/orders").header(USER, "7").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/orders").with(user(7)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"addressId\":5}"))
                 .andExpect(status().isNotFound());
     }
@@ -110,7 +113,7 @@ class OrderControllerTest {
         given(orderService.list(7L, OrderStatus.CANCELLED, 0, 10))
                 .willReturn(new PageResponse<>(List.of(order()), 0, 10, 1, 1));
 
-        mockMvc.perform(get("/orders").header(USER, "7").param("status", "CANCELLED"))
+        mockMvc.perform(get("/orders").with(user(7)).param("status", "CANCELLED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].id").value(1001))
                 .andExpect(jsonPath("$.totalPages").value(1));
@@ -118,14 +121,14 @@ class OrderControllerTest {
 
     @Test
     void listRejectsSizeAboveFifty() throws Exception {
-        mockMvc.perform(get("/orders").header(USER, "7").param("size", "51"))
+        mockMvc.perform(get("/orders").with(user(7)).param("size", "51"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("size"));
     }
 
     @Test
     void listRejectsUnknownStatus() throws Exception {
-        mockMvc.perform(get("/orders").header(USER, "7").param("status", "LOST"))
+        mockMvc.perform(get("/orders").with(user(7)).param("status", "LOST"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -133,7 +136,7 @@ class OrderControllerTest {
     void getReturnsOrder() throws Exception {
         given(orderService.get(7L, 1001L)).willReturn(order());
 
-        mockMvc.perform(get("/orders/1001").header(USER, "7"))
+        mockMvc.perform(get("/orders/1001").with(user(7)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.address.city").value("Mumbai"));
     }
@@ -142,7 +145,7 @@ class OrderControllerTest {
     void getMapsForeignOrderTo403() throws Exception {
         given(orderService.get(7L, 1001L)).willThrow(new ForbiddenException("You do not have access to this order."));
 
-        mockMvc.perform(get("/orders/1001").header(USER, "7"))
+        mockMvc.perform(get("/orders/1001").with(user(7)))
                 .andExpect(status().isForbidden());
     }
 
@@ -150,7 +153,7 @@ class OrderControllerTest {
     void cancelReturnsOrder() throws Exception {
         given(orderService.cancel(7L, 1001L)).willReturn(order());
 
-        mockMvc.perform(post("/orders/1001/cancel").header(USER, "7"))
+        mockMvc.perform(post("/orders/1001/cancel").with(user(7)))
                 .andExpect(status().isOk());
     }
 
@@ -158,7 +161,7 @@ class OrderControllerTest {
     void cancelOutsideWindowMapsTo400() throws Exception {
         given(orderService.cancel(7L, 1001L)).willThrow(new BusinessRuleException("The 48-hour cancellation window for this order has expired."));
 
-        mockMvc.perform(post("/orders/1001/cancel").header(USER, "7"))
+        mockMvc.perform(post("/orders/1001/cancel").with(user(7)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -167,7 +170,7 @@ class OrderControllerTest {
         given(orderService.buyAgain(7L, 1001L))
                 .willReturn(new CartResponse(1L, List.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0));
 
-        mockMvc.perform(post("/orders/1001/buy-again").header(USER, "7"))
+        mockMvc.perform(post("/orders/1001/buy-again").with(user(7)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1));
     }
