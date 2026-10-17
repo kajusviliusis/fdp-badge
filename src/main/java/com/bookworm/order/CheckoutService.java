@@ -70,7 +70,7 @@ public class CheckoutService {
         BigDecimal subtotal = lines.stream().map(BookQuantity::lineTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
         PriceBreakdown prices = pricingService.calculate(subtotal);
         int points = request.pointsToRedeem();
-        requireRedeemable(points, prices.subtotal());
+        giftPointsPolicy.requireWithinSubtotal(points, prices.subtotal());
 
         BigDecimal discount = giftPointsPolicy.discountFor(points);
         int pointsEarned = giftPointsPolicy.pointsEarnedFor(prices.totalAfter(discount));
@@ -78,13 +78,5 @@ public class CheckoutService {
 
         Order order = Order.place(user, address, lines, prices, points, discount, pointsEarned, now);
         return OrderResponse.from(orderRepository.save(order), null);
-    }
-
-    /** Points can only reduce the subtotal; tax and delivery are always paid in full. */
-    private static void requireRedeemable(int points, BigDecimal subtotal) {
-        if (BigDecimal.valueOf(points).compareTo(subtotal) > 0) {
-            throw new BusinessRuleException(
-                    "Gift points to redeem (%d) cannot exceed the order subtotal (%s).".formatted(points, subtotal));
-        }
     }
 }

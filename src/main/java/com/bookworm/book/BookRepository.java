@@ -1,5 +1,6 @@
 package com.bookworm.book;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,4 +41,30 @@ public interface BookRepository extends JpaRepository<Book, Long>, JpaSpecificat
                            @Param("categoryId") Long categoryId,
                            @Param("author") String author,
                            Pageable pageable);
+
+    /**
+     * In-stock books in any of the given categories or by any of the given authors, other than the excluded
+     * ones. Books by a favoured author rank first, then popularity.
+     */
+    @EntityGraph(attributePaths = "category")
+    @Query("""
+            select b from Book b
+            where b.id not in :excludedIds
+              and b.stockQuantity > 0
+              and (b.category.id in :categoryIds or b.author in :authors)
+            order by case when b.author in :authors then 0 else 1 end, b.copiesSold desc, b.id
+            """)
+    List<Book> findLikedBy(@Param("excludedIds") Collection<Long> excludedIds,
+                           @Param("categoryIds") Collection<Long> categoryIds,
+                           @Param("authors") Collection<String> authors,
+                           Pageable pageable);
+
+    /** In-stock books other than the excluded ones, most popular first. */
+    @EntityGraph(attributePaths = "category")
+    @Query("""
+            select b from Book b
+            where b.id not in :excludedIds and b.stockQuantity > 0
+            order by b.copiesSold desc, b.id
+            """)
+    List<Book> findPopularExcluding(@Param("excludedIds") Collection<Long> excludedIds, Pageable pageable);
 }

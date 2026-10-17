@@ -3,6 +3,8 @@ package com.bookworm.giftpoints;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
+import com.bookworm.common.error.BusinessRuleException;
+
 import org.springframework.stereotype.Service;
 
 /**
@@ -32,5 +34,17 @@ public class GiftPointsPolicy {
     /** Redeeming is fixed at 1 point = ₹1 off. */
     public BigDecimal discountFor(int pointsRedeemed) {
         return BigDecimal.valueOf(pointsRedeemed).setScale(MONEY_SCALE, RoundingMode.UNNECESSARY);
+    }
+
+    /**
+     * Points can only reduce the subtotal; tax and delivery are always paid in full.
+     *
+     * @throws BusinessRuleException if the points would be worth more than the subtotal
+     */
+    public void requireWithinSubtotal(int pointsRedeemed, BigDecimal subtotal) {
+        if (discountFor(pointsRedeemed).compareTo(subtotal) > 0) {
+            throw new BusinessRuleException(
+                    "Gift points to redeem (%d) cannot exceed the order subtotal (%s).".formatted(pointsRedeemed, subtotal));
+        }
     }
 }
