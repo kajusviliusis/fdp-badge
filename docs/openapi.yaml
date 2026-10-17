@@ -1,0 +1,1832 @@
+openapi: 3.0.3
+info:
+  title: BookWorm E-Commerce API
+  description: |
+    REST API for the BookWorm e-commerce bookstore platform built with
+    Spring Boot (Java 21) and PostgreSQL.
+
+    ## Authentication
+    All protected endpoints require a JWT Bearer token obtained via
+    `POST /api/v1/auth/login`. Include it as:
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    ## Gift Points
+    1 gift point = ₹1 discount. Points are awarded on each completed order
+    and may be redeemed at checkout.
+  version: 1.0.0
+  contact:
+    name: BookWorm API Team
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: User registration and authentication
+  - name: Users
+    description: User profile management
+  - name: Categories
+    description: Book categories
+  - name: Publishers
+    description: Book publishers
+  - name: Books
+    description: Book catalog and details
+  - name: Cart
+    description: Shopping cart management
+  - name: Addresses
+    description: Delivery address management
+  - name: Orders
+    description: Order lifecycle management
+  - name: Payments
+    description: Simulated payment processing
+  - name: Recommendations
+    description: Personalised book recommendations and Buy Again
+
+# ---------------------------------------------------------------------------
+# PATHS
+# ---------------------------------------------------------------------------
+paths:
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate and receive a JWT
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Invalidate the current JWT (server-side blocklist)
+      operationId: logoutUser
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logged out successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Users ──────────────────────────────────────────────────────────────────
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get authenticated user's profile
+      operationId: getMyProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    patch:
+      tags: [Users]
+      summary: Update authenticated user's profile
+      operationId: updateMyProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /users/me/gift-points:
+    get:
+      tags: [Users]
+      summary: Get current gift-points balance
+      operationId: getGiftPoints
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Gift points balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GiftPointsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Categories ────────────────────────────────────────────────────────────
+  /categories:
+    get:
+      tags: [Categories]
+      summary: List all book categories
+      operationId: listCategories
+      responses:
+        '200':
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CategoryResponse'
+
+    post:
+      tags: [Categories]
+      summary: Create a new category (admin)
+      operationId: createCategory
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+      responses:
+        '201':
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /categories/{categoryId}:
+    parameters:
+      - $ref: '#/components/parameters/categoryId'
+    get:
+      tags: [Categories]
+      summary: Get a single category
+      operationId: getCategory
+      responses:
+        '200':
+          description: Category details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Publishers ────────────────────────────────────────────────────────────
+  /publishers:
+    get:
+      tags: [Publishers]
+      summary: List all publishers
+      operationId: listPublishers
+      responses:
+        '200':
+          description: List of publishers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublisherResponse'
+
+    post:
+      tags: [Publishers]
+      summary: Create a new publisher (admin)
+      operationId: createPublisher
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublisherRequest'
+      responses:
+        '201':
+          description: Publisher created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublisherResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /publishers/{publisherId}:
+    parameters:
+      - $ref: '#/components/parameters/publisherId'
+    get:
+      tags: [Publishers]
+      summary: Get a single publisher
+      operationId: getPublisher
+      responses:
+        '200':
+          description: Publisher details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublisherResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Books ─────────────────────────────────────────────────────────────────
+  /books:
+    get:
+      tags: [Books]
+      summary: List and search the book catalog
+      operationId: listBooks
+      parameters:
+        - name: q
+          in: query
+          description: Full-text search query (title, author)
+          schema:
+            type: string
+        - name: categoryId
+          in: query
+          description: Filter by category
+          schema:
+            type: integer
+            format: int64
+        - name: publisherId
+          in: query
+          description: Filter by publisher
+          schema:
+            type: integer
+            format: int64
+        - name: language
+          in: query
+          schema:
+            type: string
+        - name: format
+          in: query
+          schema:
+            $ref: '#/components/schemas/BookFormat'
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: 0
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: 0
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [relevance, price_asc, price_desc, newest, bestseller]
+            default: relevance
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Paginated list of books
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookPage'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /books/bestsellers:
+    get:
+      tags: [Books]
+      summary: List bestselling books this month
+      operationId: listBestsellers
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: List of bestselling books
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookSummaryResponse'
+
+  /books/new-launches:
+    get:
+      tags: [Books]
+      summary: List newly launched books
+      operationId: listNewLaunches
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: List of new launches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookSummaryResponse'
+
+  /books/{bookId}:
+    parameters:
+      - $ref: '#/components/parameters/bookId'
+    get:
+      tags: [Books]
+      summary: Get detailed information about a book
+      operationId: getBook
+      responses:
+        '200':
+          description: Book details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /books/{bookId}/related:
+    parameters:
+      - $ref: '#/components/parameters/bookId'
+    get:
+      tags: [Books]
+      summary: Get books related to a given book (same category/author)
+      operationId: getRelatedBooks
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+      responses:
+        '200':
+          description: List of related books
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookSummaryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /books/{bookId}/reviews:
+    parameters:
+      - $ref: '#/components/parameters/bookId'
+    get:
+      tags: [Books]
+      summary: List reviews for a book
+      operationId: listBookReviews
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: Paginated list of reviews
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Books]
+      summary: Submit a review for a book (must have purchased it)
+      operationId: createBookReview
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '201':
+          description: Review submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # ── Cart ──────────────────────────────────────────────────────────────────
+  /cart:
+    get:
+      tags: [Cart]
+      summary: Get the authenticated user's cart
+      operationId: getCart
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /cart/items:
+    post:
+      tags: [Cart]
+      summary: Add a book to the cart (or increment quantity)
+      operationId: addCartItem
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCartItemRequest'
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /cart/items/{bookId}:
+    parameters:
+      - $ref: '#/components/parameters/bookId'
+    put:
+      tags: [Cart]
+      summary: Update quantity of a cart item
+      operationId: updateCartItem
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCartItemRequest'
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags: [Cart]
+      summary: Remove a book from the cart
+      operationId: removeCartItem
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Updated cart after removal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cart/clear:
+    delete:
+      tags: [Cart]
+      summary: Remove all items from the cart
+      operationId: clearCart
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Cart cleared
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── Addresses ─────────────────────────────────────────────────────────────
+  /addresses:
+    get:
+      tags: [Addresses]
+      summary: List authenticated user's delivery addresses
+      operationId: listAddresses
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of addresses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AddressResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Addresses]
+      summary: Add a new delivery address
+      operationId: createAddress
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressRequest'
+      responses:
+        '201':
+          description: Address created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /addresses/{addressId}:
+    parameters:
+      - $ref: '#/components/parameters/addressId'
+    get:
+      tags: [Addresses]
+      summary: Get a specific delivery address
+      operationId: getAddress
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Address details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Addresses]
+      summary: Update a delivery address
+      operationId: updateAddress
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressRequest'
+      responses:
+        '200':
+          description: Updated address
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags: [Addresses]
+      summary: Delete a delivery address
+      operationId: deleteAddress
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Address deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Address is associated with an existing order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Orders ────────────────────────────────────────────────────────────────
+  /orders:
+    get:
+      tags: [Orders]
+      summary: List the authenticated user's orders
+      operationId: listOrders
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: Paginated list of orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Orders]
+      summary: Place a new order from the current cart
+      operationId: createOrder
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order placed — awaiting payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /orders/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/orderId'
+    get:
+      tags: [Orders]
+      summary: Get details of a specific order
+      operationId: getOrder
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/{orderId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/orderId'
+    post:
+      tags: [Orders]
+      summary: Cancel an order (within 48 hours of placement)
+      operationId: cancelOrder
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Cancellation window expired or order already shipped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/{orderId}/buy-again:
+    parameters:
+      - $ref: '#/components/parameters/orderId'
+    post:
+      tags: [Orders]
+      summary: Add all items from a past order back into the current cart
+      operationId: buyAgain
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Cart updated with re-added items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Payments ──────────────────────────────────────────────────────────────
+  /orders/{orderId}/payment:
+    parameters:
+      - $ref: '#/components/parameters/orderId'
+    post:
+      tags: [Payments]
+      summary: Initiate (simulated) payment for an order
+      operationId: initiatePayment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '200':
+          description: Payment processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Order not in PENDING_PAYMENT state or payment already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    get:
+      tags: [Payments]
+      summary: Get payment details for an order
+      operationId: getPayment
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Payment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Recommendations ───────────────────────────────────────────────────────
+  /recommendations:
+    get:
+      tags: [Recommendations]
+      summary: Get personalised book recommendations based on order history
+      operationId: getRecommendations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: List of recommended books
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /recommendations/gift-points/redeem:
+    post:
+      tags: [Recommendations]
+      summary: Preview gift-point redemption discount for a given order total
+      description: |
+        Returns the discount amount that would be applied if the user redeems
+        all (or a specified number of) their gift points. Actual redemption
+        happens at order creation via `CreateOrderRequest.giftPointsToRedeem`.
+      operationId: previewGiftPointsRedemption
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GiftPointsRedemptionRequest'
+      responses:
+        '200':
+          description: Redemption preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GiftPointsRedemptionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+# ---------------------------------------------------------------------------
+# COMPONENTS
+# ---------------------------------------------------------------------------
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # ── Parameters ─────────────────────────────────────────────────────────────
+  parameters:
+    bookId:
+      name: bookId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    categoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    publisherId:
+      name: publisherId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    addressId:
+      name: addressId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    orderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+
+  # ── Reusable Responses ─────────────────────────────────────────────────────
+  responses:
+    BadRequest:
+      description: Bad request — invalid input or business rule violation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication required or token invalid/expired
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated but not authorised to access this resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Requested resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Resource already exists or state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Request body failed validation constraints
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+
+  # ── Schemas ────────────────────────────────────────────────────────────────
+  schemas:
+
+    # -- Enums --
+    BookFormat:
+      type: string
+      enum: [PAPERBACK, HARDCOVER, EBOOK]
+
+    OrderStatus:
+      type: string
+      enum:
+        - PENDING_PAYMENT
+        - CONFIRMED
+        - SHIPPED
+        - DELIVERED
+        - CANCELLED
+
+    PaymentMethod:
+      type: string
+      enum: [CREDIT_CARD, DEBIT_CARD, UPI, WALLET]
+
+    PaymentStatus:
+      type: string
+      enum: [PENDING, SUCCESS, FAILED]
+
+    # -- Auth --
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: Arjun Patel
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          example: arjun.patel@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          description: Must contain at least one uppercase letter, one digit, and one special character
+          example: S3cur3P@ss!
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: arjun.patel@example.com
+        password:
+          type: string
+          format: password
+          example: S3cur3P@ss!
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          description: Token validity in seconds
+          example: 3600
+        user:
+          $ref: '#/components/schemas/UserResponse'
+
+    # -- User --
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: Arjun Patel
+        email:
+          type: string
+          format: email
+          example: arjun.patel@example.com
+        giftPoints:
+          type: integer
+          description: Current gift-points balance (1 point = ₹1)
+          example: 150
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: Arjun Patel
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          example: arjun.patel@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          example: N3wS3cur3P@ss!
+
+    GiftPointsResponse:
+      type: object
+      properties:
+        userId:
+          type: integer
+          format: int64
+        giftPoints:
+          type: integer
+          example: 150
+          description: 1 point = ₹1 discount
+
+    # -- Category --
+    CategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: Science Fiction
+
+    CategoryResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 3
+        name:
+          type: string
+          example: Science Fiction
+
+    # -- Publisher --
+    PublisherRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+          example: ABC Publishers
+
+    PublisherResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 7
+        name:
+          type: string
+          example: ABC Publishers
+
+    # -- Book --
+    BookSummaryResponse:
+      type: object
+      description: Lightweight book representation used in lists and carousels
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 42
+        title:
+          type: string
+          example: Joy of Minimalism
+        author:
+          type: string
+          example: Daniel Reed
+        price:
+          type: number
+          format: double
+          example: 149.00
+        format:
+          $ref: '#/components/schemas/BookFormat'
+        coverImageUrl:
+          type: string
+          format: uri
+          example: https://cdn.bookworm.in/covers/joy-of-minimalism.jpg
+        category:
+          $ref: '#/components/schemas/CategoryResponse'
+        estimatedDeliveryDays:
+          type: integer
+          example: 3
+        inStock:
+          type: boolean
+          example: true
+
+    BookDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/BookSummaryResponse'
+        - type: object
+          properties:
+            description:
+              type: string
+              example: Declutter your life to uncover peace, clarity, and joy.
+            publisher:
+              $ref: '#/components/schemas/PublisherResponse'
+            language:
+              type: string
+              example: English
+            isbn:
+              type: string
+              example: 978-3-16-148410-0
+            stockQuantity:
+              type: integer
+              example: 200
+            averageRating:
+              type: number
+              format: double
+              minimum: 0
+              maximum: 5
+              example: 4.5
+            totalReviews:
+              type: integer
+              example: 145
+            copiesSold:
+              type: integer
+              example: 145
+
+    BookPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookSummaryResponse'
+        page:
+          type: integer
+          example: 0
+        size:
+          type: integer
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          example: 340
+        totalPages:
+          type: integer
+          example: 17
+
+    # -- Review --
+    ReviewRequest:
+      type: object
+      required: [rating, comment]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          minLength: 10
+          maxLength: 1000
+          example: A refreshing take on clarity in a cluttered world.
+
+    ReviewResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        bookId:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        reviewerName:
+          type: string
+          example: John Smith
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          example: A refreshing take on clarity in a cluttered world.
+        createdAt:
+          type: string
+          format: date-time
+
+    ReviewPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+
+    # -- Cart --
+    AddCartItemRequest:
+      type: object
+      required: [bookId, quantity]
+      properties:
+        bookId:
+          type: integer
+          format: int64
+          example: 42
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 99
+          example: 1
+
+    UpdateCartItemRequest:
+      type: object
+      required: [quantity]
+      properties:
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 99
+          example: 2
+
+    CartItemResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        book:
+          $ref: '#/components/schemas/BookSummaryResponse'
+        quantity:
+          type: integer
+          example: 2
+        lineTotal:
+          type: number
+          format: double
+          description: quantity × book.price
+          example: 298.00
+
+    CartResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItemResponse'
+        subtotal:
+          type: number
+          format: double
+          description: Sum of all line totals before tax and discounts
+          example: 508.00
+        tax:
+          type: number
+          format: double
+          example: 62.00
+        deliveryCharges:
+          type: number
+          format: double
+          example: 0.00
+        totalItems:
+          type: integer
+          example: 2
+
+    # -- Address --
+    AddressRequest:
+      type: object
+      required: [firstName, lastName, street, city, postalCode, country, phone]
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: Arjun
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: Patel
+        street:
+          type: string
+          minLength: 5
+          maxLength: 255
+          example: 12 MG Road, Flat 4B
+        city:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: Mumbai
+        state:
+          type: string
+          maxLength: 100
+          example: Maharashtra
+        postalCode:
+          type: string
+          pattern: '^\d{6}$'
+          example: "400001"
+        country:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: India
+        phone:
+          type: string
+          pattern: '^\+?[1-9]\d{7,14}$'
+          example: "+919876543210"
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          example: arjun.patel@example.com
+
+    AddressResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 5
+        firstName:
+          type: string
+          example: Arjun
+        lastName:
+          type: string
+          example: Patel
+        street:
+          type: string
+          example: 12 MG Road, Flat 4B
+        city:
+          type: string
+          example: Mumbai
+        state:
+          type: string
+          example: Maharashtra
+        postalCode:
+          type: string
+          example: "400001"
+        country:
+          type: string
+          example: India
+        phone:
+          type: string
+          example: "+919876543210"
+        email:
+          type: string
+          format: email
+          example: arjun.patel@example.com
+
+    # -- Order --
+    CreateOrderRequest:
+      type: object
+      required: [addressId]
+      properties:
+        addressId:
+          type: integer
+          format: int64
+          description: ID of the delivery address to use
+          example: 5
+        giftPointsToRedeem:
+          type: integer
+          minimum: 0
+          description: Number of gift points to redeem (1 point = ₹1 discount). Cannot exceed the user's current balance or the order subtotal.
+          example: 50
+        couponCode:
+          type: string
+          maxLength: 50
+          description: Optional promotional coupon code
+          example: SAVE100
+
+    OrderItemResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        book:
+          $ref: '#/components/schemas/BookSummaryResponse'
+        quantity:
+          type: integer
+          example: 1
+        unitPrice:
+          type: number
+          format: double
+          description: Price at time of order placement
+          example: 149.00
+        lineTotal:
+          type: number
+          format: double
+          example: 149.00
+
+    OrderResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1001
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItemResponse'
+        address:
+          $ref: '#/components/schemas/AddressResponse'
+        subtotal:
+          type: number
+          format: double
+          example: 508.00
+        tax:
+          type: number
+          format: double
+          example: 62.00
+        deliveryCharges:
+          type: number
+          format: double
+          example: 0.00
+        discount:
+          type: number
+          format: double
+          description: Total discount applied (gift points + coupon)
+          example: 100.00
+        totalAmount:
+          type: number
+          format: double
+          description: Final payable amount
+          example: 470.00
+        giftPointsRedeemed:
+          type: integer
+          example: 50
+        giftPointsEarned:
+          type: integer
+          description: Points earned upon order completion
+          example: 47
+        createdAt:
+          type: string
+          format: date-time
+        cancellationDeadline:
+          type: string
+          format: date-time
+          description: Deadline for cancellation (48 hours after createdAt)
+        payment:
+          $ref: '#/components/schemas/PaymentResponse'
+
+    OrderPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+
+    # -- Payment --
+    CardDetails:
+      type: object
+      required: [cardNumber, nameOnCard, cvv, expiryDate]
+      properties:
+        cardNumber:
+          type: string
+          pattern: '^\d{16}$'
+          description: 16-digit card number (simulated — do not send real PAN in production)
+          example: "4111111111111111"
+        nameOnCard:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: Arjun Patel
+        cvv:
+          type: string
+          pattern: '^\d{3,4}$'
+          example: "123"
+        expiryDate:
+          type: string
+          pattern: '^(0[1-9]|1[0-2])\/\d{4}$'
+          description: Format MM/YYYY
+          example: "12/2027"
+
+    UpiDetails:
+      type: object
+      required: [upiId]
+      properties:
+        upiId:
+          type: string
+          pattern: '^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$'
+          example: arjun@okaxis
+
+    PaymentRequest:
+      type: object
+      required: [method]
+      properties:
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        cardDetails:
+          $ref: '#/components/schemas/CardDetails'
+          description: Required when method is CREDIT_CARD or DEBIT_CARD
+        upiDetails:
+          $ref: '#/components/schemas/UpiDetails'
+          description: Required when method is UPI
+
+    PaymentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 2001
+        orderId:
+          type: integer
+          format: int64
+          example: 1001
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        amount:
+          type: number
+          format: double
+          example: 470.00
+        transactionReference:
+          type: string
+          description: Simulated transaction reference ID
+          example: TXN-20240721-XK9Q2
+
+    # -- Gift Points --
+    GiftPointsRedemptionRequest:
+      type: object
+      required: [pointsToRedeem, orderSubtotal]
+      properties:
+        pointsToRedeem:
+          type: integer
+          minimum: 1
+          description: Number of gift points the user wants to redeem
+          example: 100
+        orderSubtotal:
+          type: number
+          format: double
+          minimum: 0
+          description: Current order subtotal before discount
+          example: 508.00
+
+    GiftPointsRedemptionResponse:
+      type: object
+      properties:
+        pointsToRedeem:
+          type: integer
+          example: 100
+        discountAmount:
+          type: number
+          format: double
+          description: Rupee discount that will be applied (≤ orderSubtotal)
+          example: 100.00
+        remainingPoints:
+          type: integer
+          description: Points balance after redemption
+          example: 50
+        newOrderTotal:
+          type: number
+          format: double
+          example: 408.00
+
+    # -- Errors --
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          example: 404
+        error:
+          type: string
+          example: Not Found
+        message:
+          type: string
+          example: Book with id 42 was not found.
+        path:
+          type: string
+          example: /api/v1/books/42
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          example: 422
+        error:
+          type: string
+          example: Unprocessable Entity
+        message:
+          type: string
+          example: Validation failed for one or more fields.
+        path:
+          type: string
+          example: /api/v1/auth/register
+        fieldErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+
+    FieldError:
+      type: object
+      properties:
+        field:
+          type: string
+          example: email
+        rejectedValue:
+          type: string
+          example: not-an-email
+        message:
+          type: string
+          example: must be a well-formed email address
