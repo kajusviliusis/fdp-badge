@@ -27,6 +27,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 /**
  * A placed order. Creating one ({@link #place}) takes stock and gift points; cancelling one ({@link #cancel})
@@ -79,6 +80,10 @@ public class Order {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /** Stops two concurrent requests (e.g. double-submitted payments) from both changing the same order. */
+    @Version
+    private long version;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id")
     private List<OrderItem> items = new ArrayList<>();
@@ -118,7 +123,30 @@ public class Order {
     }
 
     /**
-     * Cancels the order, returning stock and any redeemed gift points.
+     * @throws BusinessRuleException if the order is not waiting for payment
+     */
+    public void requireAwaitingPayment() {
+        if (status != OrderStatus.PENDING_PAYMENT) {
+            throw new BusinessRuleException("Order is not awaiting payment; its status is " + status + ".");
+        }
+    }
+
+    /**
+     * Marks the order as paid: it becomes {@link OrderStatus#CONFIRMED}, the gift points it earns are credited
+     * and its copies count towards the books' sales.
+     *
+     * @throws BusinessRuleException if the order is not waiting for payment
+     */
+    public void confirmPayment() {
+        requireAwaitingPayment();
+        status = OrderStatus.CONFIRMED;
+        user.addGiftPoints(giftPointsEarned);
+        items.forEach(item -> item.getBook().recordSale(item.getQuantity()));
+    }
+
+    /**
+     * Cancels the order, returning stock and any redeemed gift points. If the order had already been paid,
+     * the points it earned are taken back (never below a zero balance) and its sales are reversed.
      *
      * @throws BusinessRuleException if the order has progressed past cancellation or the window has closed
      */
@@ -129,9 +157,14 @@ public class Order {
         if (now.isAfter(cancellationDeadline())) {
             throw new BusinessRuleException("The 48-hour cancellation window for this order has expired.");
         }
+        boolean wasPaid = status == OrderStatus.CONFIRMED;
         status = OrderStatus.CANCELLED;
         items.forEach(item -> item.getBook().restock(item.getQuantity()));
         user.addGiftPoints(giftPointsRedeemed);
+        if (wasPaid) {
+            user.revokeGiftPoints(giftPointsEarned);
+            items.forEach(item -> item.getBook().revokeSale(item.getQuantity()));
+        }
     }
 
     public Instant cancellationDeadline() {

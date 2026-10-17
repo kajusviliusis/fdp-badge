@@ -77,7 +77,7 @@ public class CheckoutService {
         Instant now = clock.instant();
 
         Order order = Order.place(user, address, lines, prices, points, discount, pointsEarned, now);
-        return OrderResponse.from(orderRepository.save(order));
+        return OrderResponse.from(orderRepository.save(order), null);
     }
 
     /** Points can only reduce the subtotal; tax and delivery are always paid in full. */

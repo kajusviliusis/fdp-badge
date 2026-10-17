@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -44,6 +45,14 @@ public class GlobalExceptionHandler {
                                                                       HttpServletRequest request) {
         log.warn("Concurrent modification on {}", request.getRequestURI(), ex);
         return error(HttpStatus.CONFLICT, "The resource was modified by another request. Please retry.", request);
+    }
+
+    /** A database constraint (e.g. a unique key) rejected a write that raced with another request. */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleIntegrityViolation(DataIntegrityViolationException ex,
+                                                                  HttpServletRequest request) {
+        log.warn("Data integrity violation on {}", request.getRequestURI(), ex);
+        return error(HttpStatus.CONFLICT, "The request conflicts with the current state of the resource.", request);
     }
 
     @ExceptionHandler(UnauthorizedException.class)
@@ -121,9 +130,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(ErrorResponse.of(status, message, request.getRequestURI()));
     }
 
-    /** Omits the rejected value for password fields so credentials are never echoed back. */
+    /** Field-name fragments (lower case) whose values must never be echoed back in an error response. */
+    private static final List<String> SENSITIVE_FIELDS = List.of("password", "carddetails", "upidetails");
+
+    /** Omits the rejected value for credentials and payment details so they are never echoed back. */
     private static FieldError toFieldError(org.springframework.validation.FieldError error) {
-        boolean sensitive = error.getField().toLowerCase().contains("password");
+        String field = error.getField().toLowerCase();
+        boolean sensitive = SENSITIVE_FIELDS.stream().anyMatch(field::contains);
         String rejected = sensitive || error.getRejectedValue() == null ? null : String.valueOf(error.getRejectedValue());
         return new FieldError(error.getField(), rejected, error.getDefaultMessage());
     }

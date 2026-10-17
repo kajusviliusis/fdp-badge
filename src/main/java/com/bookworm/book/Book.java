@@ -141,6 +141,16 @@ public class Book {
         stockQuantity += quantity;
     }
 
+    /** Counts copies towards the book's sales once their order is paid. */
+    public void recordSale(int quantity) {
+        copiesSold += quantity;
+    }
+
+    /** Reverses {@link #recordSale(int)} when a paid order is cancelled. */
+    public void revokeSale(int quantity) {
+        copiesSold = Math.max(0, copiesSold - quantity);
+    }
+
     public Long getId() {
         return id;
     }

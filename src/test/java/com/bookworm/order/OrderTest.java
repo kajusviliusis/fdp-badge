@@ -139,12 +139,72 @@ class OrderTest {
         assertThat(lines).containsExactly(new BookQuantity(book, 2));
     }
 
+    @Test
+    void confirmPaymentConfirmsOrderCreditsPointsAndRecordsSales() {
+        Order order = placeEarning(3, 0, 30);
+
+        order.confirmPayment();
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+        assertThat(user.getGiftPoints()).isEqualTo(130);
+        assertThat(book.getCopiesSold()).isEqualTo(3);
+    }
+
+    @Test
+    void confirmPaymentTwiceIsRejectedSoPointsAreNotCreditedTwice() {
+        Order order = placeEarning(3, 0, 30);
+        order.confirmPayment();
+
+        assertThatThrownBy(order::confirmPayment).isInstanceOf(BusinessRuleException.class);
+        assertThat(user.getGiftPoints()).isEqualTo(130);
+        assertThat(book.getCopiesSold()).isEqualTo(3);
+    }
+
+    @Test
+    void requireAwaitingPaymentRejectsOrdersInOtherStatuses() {
+        Order order = place(1, 0);
+        order.requireAwaitingPayment();
+        order.cancel(PLACED_AT);
+
+        assertThatThrownBy(order::requireAwaitingPayment)
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("CANCELLED");
+    }
+
+    @Test
+    void cancellingPaidOrderReversesEarnedPointsAndSales() {
+        Order order = placeEarning(3, 40, 30);
+        order.confirmPayment();
+
+        order.cancel(PLACED_AT.plusSeconds(3600));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(book.getStockQuantity()).isEqualTo(10);
+        assertThat(book.getCopiesSold()).isZero();
+        assertThat(user.getGiftPoints()).isEqualTo(100);
+    }
+
+    @Test
+    void cancellingPaidOrderNeverDrivesPointsBelowZero() {
+        Order order = placeEarning(3, 0, 30);
+        order.confirmPayment();
+        user.deductGiftPoints(user.getGiftPoints() - 10);
+
+        order.cancel(PLACED_AT);
+
+        assertThat(user.getGiftPoints()).isZero();
+    }
+
     private Order place(int quantity, int points) {
+        return placeEarning(quantity, points, 0);
+    }
+
+    private Order placeEarning(int quantity, int points, int earned) {
         PriceBreakdown prices = new PriceBreakdown(
                 new BigDecimal("100.00").multiply(BigDecimal.valueOf(quantity)).setScale(2),
                 new BigDecimal("12.00").multiply(BigDecimal.valueOf(quantity)).setScale(2),
                 new BigDecimal("40.00"));
         return Order.place(user, address, List.of(new BookQuantity(book, quantity)), prices, points,
-                BigDecimal.valueOf(points).setScale(2), 0, PLACED_AT);
+                BigDecimal.valueOf(points).setScale(2), earned, PLACED_AT);
     }
 }

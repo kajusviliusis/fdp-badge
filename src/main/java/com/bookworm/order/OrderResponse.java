@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.util.List;
 
 import com.bookworm.address.AddressResponse;
+import com.bookworm.payment.Payment;
+import com.bookworm.payment.PaymentResponse;
 
 public record OrderResponse(
         Long id,
@@ -19,9 +21,13 @@ public record OrderResponse(
         int giftPointsRedeemed,
         int giftPointsEarned,
         Instant createdAt,
-        Instant cancellationDeadline) {
+        Instant cancellationDeadline,
+        PaymentResponse payment) {
 
-    static OrderResponse from(Order order) {
+    /**
+     * @param payment the order's payment, or {@code null} if none has been attempted (omitted from the JSON)
+     */
+    static OrderResponse from(Order order, Payment payment) {
         return new OrderResponse(
                 order.getId(),
                 order.getStatus(),
@@ -35,6 +41,7 @@ public record OrderResponse(
                 order.getGiftPointsRedeemed(),
                 order.getGiftPointsEarned(),
                 order.getCreatedAt(),
-                order.cancellationDeadline());
+                order.cancellationDeadline(),
+                payment == null ? null : PaymentResponse.from(payment));
     }
 }

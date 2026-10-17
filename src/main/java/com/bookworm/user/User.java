@@ -61,6 +61,14 @@ public class User {
         giftPoints += points;
     }
 
+    /**
+     * Takes points back, e.g. when the order that earned them is cancelled. The balance never goes below zero:
+     * points the user has already spent are not clawed back.
+     */
+    public void revokeGiftPoints(int points) {
+        giftPoints = Math.max(0, giftPoints - points);
+    }
+
     public Long getId() {
         return id;
     }
