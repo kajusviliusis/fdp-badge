@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,7 +27,7 @@ public class BookController {
     }
 
     @GetMapping
-    public PageResponse<BookSummaryResponse> search(@Valid @ModelAttribute BookSearchCriteria criteria) {
+    public PageResponse<BookSummaryResponse> search(@ParameterObject @Valid @ModelAttribute BookSearchCriteria criteria) {
         return bookService.search(criteria);
     }
 
