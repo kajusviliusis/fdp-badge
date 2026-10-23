@@ -5,10 +5,12 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/bookworm}
     username: ${DB_USERNAME:bookworm}
     password: ${DB_PASSWORD}
+  flyway:
+    locations: classpath:db/migration
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:update}
+      ddl-auto: ${JPA_DDL_AUTO:validate}
     properties:
       hibernate:
         jdbc:
