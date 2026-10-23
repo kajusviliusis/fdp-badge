@@ -49,7 +49,7 @@ class OrderControllerTest {
                 "400001", "India", "+919876543210", null);
         return new OrderResponse(1001L, OrderStatus.PENDING_PAYMENT, List.of(), address,
                 new BigDecimal("508.00"), new BigDecimal("60.96"), new BigDecimal("0.00"),
-                new BigDecimal("50.00"), new BigDecimal("518.96"), 50, 51, CREATED, CREATED.plusSeconds(172800),
+                new BigDecimal("50.00"), null, new BigDecimal("0.00"), new BigDecimal("518.96"), 50, 51, CREATED, CREATED.plusSeconds(172800),
                 null);
     }
 

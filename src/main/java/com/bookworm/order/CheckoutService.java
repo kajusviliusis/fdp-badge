@@ -10,6 +10,8 @@ import com.bookworm.address.AddressService;
 import com.bookworm.book.BookQuantity;
 import com.bookworm.cart.CartService;
 import com.bookworm.common.error.BusinessRuleException;
+import com.bookworm.coupon.AppliedCoupon;
+import com.bookworm.coupon.CouponService;
 import com.bookworm.giftpoints.GiftPointsPolicy;
 import com.bookworm.pricing.PriceBreakdown;
 import com.bookworm.pricing.PricingService;
@@ -32,22 +34,27 @@ public class CheckoutService {
     private final OrderRepository orderRepository;
     private final PricingService pricingService;
     private final GiftPointsPolicy giftPointsPolicy;
+    private final CouponService couponService;
     private final Clock clock;
 
     public CheckoutService(CartService cartService, AddressService addressService, UserRepository userRepository,
                            OrderRepository orderRepository, PricingService pricingService,
-                           GiftPointsPolicy giftPointsPolicy, Clock clock) {
+                           GiftPointsPolicy giftPointsPolicy, CouponService couponService, Clock clock) {
         this.cartService = cartService;
         this.addressService = addressService;
         this.userRepository = userRepository;
         this.orderRepository = orderRepository;
         this.pricingService = pricingService;
         this.giftPointsPolicy = giftPointsPolicy;
+        this.couponService = couponService;
         this.clock = clock;
     }
 
     /**
      * Places an order for everything in the user's cart; the cart is emptied on success.
+     * <p>
+     * Discounts are applied to the subtotal only (tax and delivery are always paid in full): the coupon first,
+     * then gift points, which may cover no more than what the coupon leaves of the subtotal.
      *
      * @throws com.bookworm.common.error.ResourceNotFoundException if the address is not one of the user's
      * @throws BusinessRuleException                               if the cart is empty, a book is out of
@@ -56,9 +63,6 @@ public class CheckoutService {
      */
     @Transactional
     public OrderResponse placeOrder(Long userId, CreateOrderRequest request) {
-        if (request.hasCoupon()) {
-            throw new BusinessRuleException("Coupon code '%s' is not valid.".formatted(request.couponCode().strip()));
-        }
         User user = userRepository.getAuthenticated(userId);
         Address address = addressService.getForCheckout(userId, request.addressId());
 
@@ -69,14 +73,20 @@ public class CheckoutService {
 
         BigDecimal subtotal = lines.stream().map(BookQuantity::lineTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
         PriceBreakdown prices = pricingService.calculate(subtotal);
-        int points = request.pointsToRedeem();
-        giftPointsPolicy.requireWithinSubtotal(points, prices.subtotal());
-
-        BigDecimal discount = giftPointsPolicy.discountFor(points);
-        int pointsEarned = giftPointsPolicy.pointsEarnedFor(prices.totalAfter(discount));
         Instant now = clock.instant();
 
-        Order order = Order.place(user, address, lines, prices, points, discount, pointsEarned, now);
+        AppliedCoupon coupon = request.hasCoupon()
+                ? couponService.redeem(request.couponCode(), prices.subtotal(), now)
+                : null;
+        BigDecimal couponDiscount = coupon == null ? BigDecimal.ZERO.setScale(2) : coupon.discount();
+
+        int points = request.pointsToRedeem();
+        giftPointsPolicy.requireWithinSubtotal(points, prices.subtotal().subtract(couponDiscount));
+
+        BigDecimal discount = couponDiscount.add(giftPointsPolicy.discountFor(points));
+        int pointsEarned = giftPointsPolicy.pointsEarnedFor(prices.totalAfter(discount));
+
+        Order order = Order.place(user, address, lines, prices, points, discount, pointsEarned, now, coupon);
         return OrderResponse.from(orderRepository.save(order), null);
     }
 }

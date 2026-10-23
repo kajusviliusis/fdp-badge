@@ -9,6 +9,8 @@ import java.util.List;
 import com.bookworm.address.Address;
 import com.bookworm.book.BookQuantity;
 import com.bookworm.common.error.BusinessRuleException;
+import com.bookworm.coupon.AppliedCoupon;
+import com.bookworm.coupon.Coupon;
 import com.bookworm.pricing.PriceBreakdown;
 import com.bookworm.user.User;
 
@@ -71,6 +73,14 @@ public class Order {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal discount;
 
+    /** The coupon redeemed for this order, if any; its discount is part of {@link #discount}. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "coupon_id")
+    private Coupon coupon;
+
+    @Column(name = "coupon_discount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal couponDiscount = BigDecimal.ZERO.setScale(2);
+
     @Column(name = "total_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal totalAmount;
 
@@ -99,7 +109,7 @@ public class Order {
     }
 
     private Order(User user, Address address, PriceBreakdown prices, int giftPointsRedeemed, BigDecimal discount,
-                  int giftPointsEarned, Instant createdAt) {
+                  int giftPointsEarned, Instant createdAt, AppliedCoupon appliedCoupon) {
         this.user = user;
         this.address = address;
         this.status = OrderStatus.PENDING_PAYMENT;
@@ -111,16 +121,30 @@ public class Order {
         this.giftPointsRedeemed = giftPointsRedeemed;
         this.giftPointsEarned = giftPointsEarned;
         this.createdAt = createdAt;
+        if (appliedCoupon != null) {
+            this.coupon = appliedCoupon.coupon();
+            this.couponDiscount = appliedCoupon.discount();
+        }
+    }
+
+    /** Places an order without a coupon; see the other overload. */
+    public static Order place(User user, Address address, List<BookQuantity> lines, PriceBreakdown prices,
+                              int giftPointsRedeemed, BigDecimal discount, int giftPointsEarned, Instant now) {
+        return place(user, address, lines, prices, giftPointsRedeemed, discount, giftPointsEarned, now, null);
     }
 
     /**
      * Places an order: reserves stock for every line and spends the redeemed gift points.
      *
+     * @param discount      the total discount: gift points plus the coupon's discount
+     * @param appliedCoupon the redeemed coupon, or {@code null} if none was used
      * @throws BusinessRuleException if any book lacks stock or the user lacks the gift points
      */
     public static Order place(User user, Address address, List<BookQuantity> lines, PriceBreakdown prices,
-                              int giftPointsRedeemed, BigDecimal discount, int giftPointsEarned, Instant now) {
-        Order order = new Order(user, address, prices, giftPointsRedeemed, discount, giftPointsEarned, now);
+                              int giftPointsRedeemed, BigDecimal discount, int giftPointsEarned, Instant now,
+                              AppliedCoupon appliedCoupon) {
+        Order order = new Order(user, address, prices, giftPointsRedeemed, discount, giftPointsEarned, now,
+                appliedCoupon);
         user.deductGiftPoints(giftPointsRedeemed);
         for (BookQuantity line : lines) {
             line.book().reserveStock(line.quantity());
@@ -154,7 +178,7 @@ public class Order {
     }
 
     /**
-     * Cancels the order, returning stock and any redeemed gift points. If the order had already been paid,
+     * Cancels the order, returning stock, any redeemed gift points and the coupon redemption. If the order had already been paid,
      * the points it earned are taken back (never below a zero balance) and its sales are reversed.
      *
      * @throws BusinessRuleException if the order has progressed past cancellation or the window has closed
@@ -170,6 +194,9 @@ public class Order {
         status = OrderStatus.CANCELLED;
         items.forEach(item -> item.getBook().restock(item.getQuantity()));
         user.addGiftPoints(giftPointsRedeemed);
+        if (coupon != null) {
+            coupon.release();
+        }
         if (wasPaid) {
             user.revokeGiftPoints(giftPointsEarned);
             items.forEach(item -> item.getBook().revokeSale(item.getQuantity()));
@@ -215,6 +242,16 @@ public class Order {
 
     public BigDecimal getDiscount() {
         return discount;
+    }
+
+    /** The coupon's share of {@link #getDiscount()}; zero when no coupon was used. */
+    public BigDecimal getCouponDiscount() {
+        return couponDiscount;
+    }
+
+    /** Code of the coupon used, or {@code null}. */
+    public String getCouponCode() {
+        return coupon == null ? null : coupon.getCode();
     }
 
     public BigDecimal getTotalAmount() {

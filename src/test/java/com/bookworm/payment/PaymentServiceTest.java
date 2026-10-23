@@ -19,6 +19,7 @@ import com.bookworm.category.Category;
 import com.bookworm.common.error.BusinessRuleException;
 import com.bookworm.common.error.ForbiddenException;
 import com.bookworm.common.error.ResourceNotFoundException;
+import com.bookworm.coupon.CouponService;
 import com.bookworm.giftpoints.GiftPointsPolicy;
 import com.bookworm.giftpoints.GiftPointsProperties;
 import com.bookworm.order.CheckoutService;
@@ -46,7 +47,7 @@ import org.springframework.context.annotation.Import;
  */
 @DataJpaTest
 @Import({PaymentService.class, SimulatedPaymentGateway.class, CheckoutService.class, OrderService.class,
-        CartService.class, AddressService.class, PricingService.class, GiftPointsPolicy.class,
+        CartService.class, AddressService.class, PricingService.class, GiftPointsPolicy.class, CouponService.class,
         PaymentServiceTest.TestBeans.class})
 class PaymentServiceTest {
 

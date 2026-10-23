@@ -21,6 +21,9 @@ import com.bookworm.common.error.ConflictException;
 import com.bookworm.common.error.ForbiddenException;
 import com.bookworm.common.error.ResourceNotFoundException;
 import com.bookworm.common.page.PageResponse;
+import com.bookworm.coupon.CouponService;
+import com.bookworm.coupon.Coupon;
+import com.bookworm.coupon.DiscountType;
 import com.bookworm.giftpoints.GiftPointsPolicy;
 import com.bookworm.giftpoints.GiftPointsProperties;
 import com.bookworm.pricing.PricingProperties;
@@ -43,7 +46,7 @@ import org.springframework.context.annotation.Import;
  */
 @DataJpaTest
 @Import({CheckoutService.class, OrderService.class, CartService.class, AddressService.class,
-        OrderAddressUsageChecker.class, PricingService.class, GiftPointsPolicy.class,
+        OrderAddressUsageChecker.class, PricingService.class, GiftPointsPolicy.class, CouponService.class,
         CheckoutServiceTest.TestBeans.class})
 class CheckoutServiceTest {
 
@@ -219,12 +222,104 @@ class CheckoutServiceTest {
     }
 
     @Test
-    void couponsAreRejectedBecauseNoneExist() {
+    void percentCouponIsAppliedToSubtotalBeforeGiftPointsAndRecordedOnTheOrder() {
+        persistCoupon(Coupon.builder("SAVE20", DiscountType.PERCENT, new BigDecimal("20")));
         cartService.addItem(user.getId(), new AddCartItemRequest(cheap.getId(), 1));
 
-        assertThatThrownBy(() -> checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), null, "SAVE100")))
+        OrderResponse order = checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), 50, "SAVE20"));
+
+        assertThat(order.couponCode()).isEqualTo("SAVE20");
+        assertThat(order.couponDiscount()).isEqualByComparingTo("29.80");
+        assertThat(order.discount()).isEqualByComparingTo("79.80");
+        // 149.00 subtotal + 17.88 tax + 40.00 delivery - 79.80 discount
+        assertThat(order.totalAmount()).isEqualByComparingTo("127.08");
+        assertThat(order.giftPointsEarned()).isEqualTo(12);
+    }
+
+    @Test
+    void couponCodeIsCaseAndWhitespaceInsensitiveAndCountsItsUse() {
+        Coupon coupon = persistCoupon(Coupon.builder("SAVE100", DiscountType.FIXED, new BigDecimal("100")));
+        cartService.addItem(user.getId(), new AddCartItemRequest(cheap.getId(), 1));
+
+        OrderResponse order = checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), null, "  save100 "));
+
+        assertThat(order.couponCode()).isEqualTo("SAVE100");
+        assertThat(order.discount()).isEqualByComparingTo("100.00");
+        assertThat(coupon.getTimesUsed()).isEqualTo(1);
+    }
+
+    @Test
+    void couponDiscountNeverExceedsSubtotal() {
+        persistCoupon(Coupon.builder("BIG", DiscountType.FIXED, new BigDecimal("1000")));
+        cartService.addItem(user.getId(), new AddCartItemRequest(cheap.getId(), 1));
+
+        OrderResponse order = checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), null, "BIG"));
+
+        assertThat(order.couponDiscount()).isEqualByComparingTo("149.00");
+        // Only tax and delivery remain payable.
+        assertThat(order.totalAmount()).isEqualByComparingTo("57.88");
+    }
+
+    @Test
+    void giftPointsMayOnlyCoverWhatTheCouponLeavesOfTheSubtotal() {
+        persistCoupon(Coupon.builder("SAVE100", DiscountType.FIXED, new BigDecimal("100")));
+        cartService.addItem(user.getId(), new AddCartItemRequest(cheap.getId(), 1));
+
+        assertThatThrownBy(() -> checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), 50, "SAVE100")))
                 .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("SAVE100");
+                .hasMessageContaining("subtotal");
+    }
+
+    @Test
+    void unknownCouponIsRejected() {
+        cartService.addItem(user.getId(), new AddCartItemRequest(cheap.getId(), 1));
+
+        assertThatThrownBy(() -> checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), null, "NOPE")))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("NOPE");
+    }
+
+    @Test
+    void couponBelowMinimumOrderAmountIsRejectedAndNotUsedUp() {
+        Coupon coupon = persistCoupon(Coupon.builder("BIGSPENDER", DiscountType.FIXED, new BigDecimal("50"))
+                .minOrderAmount(new BigDecimal("500")));
+        cartService.addItem(user.getId(), new AddCartItemRequest(cheap.getId(), 1));
+
+        assertThatThrownBy(() -> checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), null, "BIGSPENDER")))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("minimum order");
+        assertThat(coupon.getTimesUsed()).isZero();
+    }
+
+    @Test
+    void expiredAndExhaustedCouponsAreRejected() {
+        persistCoupon(Coupon.builder("OLD", DiscountType.FIXED, new BigDecimal("10")).validUntil(NOW.minusSeconds(1)));
+        persistCoupon(Coupon.builder("ONCE", DiscountType.FIXED, new BigDecimal("10")).usageLimit(1));
+        cartService.addItem(user.getId(), new AddCartItemRequest(cheap.getId(), 1));
+
+        assertThatThrownBy(() -> checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), null, "OLD")))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("expired");
+
+        // The test shares one transaction, so the cart drained by the rejected attempt is not rolled back.
+        cartService.addItem(user.getId(), new AddCartItemRequest(cheap.getId(), 1));
+        checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), null, "ONCE"));
+        cartService.addItem(user.getId(), new AddCartItemRequest(cheap.getId(), 1));
+        assertThatThrownBy(() -> checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), null, "ONCE")))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("usage limit");
+    }
+
+    @Test
+    void cancellingAnOrderGivesTheCouponUseBack() {
+        Coupon coupon = persistCoupon(Coupon.builder("ONCE", DiscountType.FIXED, new BigDecimal("10")).usageLimit(1));
+        cartService.addItem(user.getId(), new AddCartItemRequest(cheap.getId(), 1));
+        OrderResponse placed = checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), null, "ONCE"));
+        assertThat(coupon.getTimesUsed()).isEqualTo(1);
+
+        orderService.cancel(user.getId(), placed.id());
+
+        assertThat(coupon.getTimesUsed()).isZero();
     }
 
     @Test
@@ -234,6 +329,13 @@ class CheckoutServiceTest {
         OrderResponse order = checkoutService.placeOrder(user.getId(), new CreateOrderRequest(address.getId(), null, "  "));
 
         assertThat(order.discount()).isEqualByComparingTo("0.00");
+        assertThat(order.couponCode()).isNull();
+    }
+
+    private Coupon persistCoupon(Coupon.Builder builder) {
+        Coupon coupon = em.persist(builder.build());
+        em.flush();
+        return coupon;
     }
 
     @Test

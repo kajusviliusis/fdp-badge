@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
 
 /**
  * @param giftPointsToRedeem points to spend (1 point = ₹1); {@code null} means none
- * @param couponCode         accepted by the contract but no coupons exist yet, so any value is rejected
+ * @param couponCode         optional promotional code, case-insensitive; applied to the subtotal before gift points
  */
 public record CreateOrderRequest(
         @NotNull Long addressId,
