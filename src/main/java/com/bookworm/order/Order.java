@@ -34,7 +34,10 @@ import jakarta.persistence.Version;
  * gives them back, so those two rules always stay symmetrical.
  */
 @Entity
-@Table(name = "orders", indexes = @Index(name = "idx_orders_user_created", columnList = "user_id, created_at"))
+@Table(name = "orders", indexes = {
+        @Index(name = "idx_orders_user_created", columnList = "user_id, created_at"),
+        @Index(name = "idx_orders_paid_at", columnList = "paid_at")
+})
 public class Order {
 
     /** How long after placement a customer may still cancel. */
@@ -79,6 +82,10 @@ public class Order {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    /** When payment succeeded; {@code null} until then. Sales are attributed to the period they were paid in. */
+    @Column(name = "paid_at")
+    private Instant paidAt;
 
     /** Stops two concurrent requests (e.g. double-submitted payments) from both changing the same order. */
     @Version
@@ -135,11 +142,13 @@ public class Order {
      * Marks the order as paid: it becomes {@link OrderStatus#CONFIRMED}, the gift points it earns are credited
      * and its copies count towards the books' sales.
      *
+     * @param now the time of payment
      * @throws BusinessRuleException if the order is not waiting for payment
      */
-    public void confirmPayment() {
+    public void confirmPayment(Instant now) {
         requireAwaitingPayment();
         status = OrderStatus.CONFIRMED;
+        paidAt = now;
         user.addGiftPoints(giftPointsEarned);
         items.forEach(item -> item.getBook().recordSale(item.getQuantity()));
     }
@@ -222,6 +231,10 @@ public class Order {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getPaidAt() {
+        return paidAt;
     }
 
     public List<OrderItem> getItems() {

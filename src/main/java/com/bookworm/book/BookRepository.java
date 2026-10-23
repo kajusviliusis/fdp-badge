@@ -22,6 +22,9 @@ public interface BookRepository extends JpaRepository<Book, Long>, JpaSpecificat
     @EntityGraph(attributePaths = {"category", "publisher"})
     Optional<Book> findWithDetailsById(Long id);
 
+    @EntityGraph(attributePaths = "category")
+    List<Book> findWithCategoryByIdIn(Collection<Long> ids);
+
     /** Returns the first page of all books in the order given by {@code pageable}, without a count query. */
     @EntityGraph(attributePaths = "category")
     List<Book> findBy(Pageable pageable);

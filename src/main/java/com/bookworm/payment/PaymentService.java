@@ -1,5 +1,8 @@
 package com.bookworm.payment;
 
+import java.time.Clock;
+import java.time.Instant;
+
 import com.bookworm.common.error.BusinessRuleException;
 import com.bookworm.common.error.ResourceNotFoundException;
 import com.bookworm.order.Order;
@@ -19,12 +22,14 @@ public class PaymentService {
     private final OrderService orderService;
     private final PaymentRepository paymentRepository;
     private final PaymentGateway paymentGateway;
+    private final Clock clock;
 
     public PaymentService(OrderService orderService, PaymentRepository paymentRepository,
-                          PaymentGateway paymentGateway) {
+                          PaymentGateway paymentGateway, Clock clock) {
         this.orderService = orderService;
         this.paymentRepository = paymentRepository;
         this.paymentGateway = paymentGateway;
+        this.clock = clock;
     }
 
     /**
@@ -46,7 +51,7 @@ public class PaymentService {
         PaymentResult result = paymentGateway.charge(request, order.getTotalAmount());
         payment.record(request.method(), result);
         if (result.approved()) {
-            order.confirmPayment();
+            order.confirmPayment(Instant.now(clock));
         }
         return PaymentResponse.from(paymentRepository.save(payment));
     }

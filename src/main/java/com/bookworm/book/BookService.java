@@ -1,6 +1,13 @@
 package com.bookworm.book;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import com.bookworm.common.error.ResourceNotFoundException;
 import com.bookworm.common.page.PageResponse;
@@ -15,13 +22,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class BookService {
 
-    private static final Sort BESTSELLER_ORDER = BookSortOption.BESTSELLER.toSort();
     private static final Sort NEWEST_ORDER = BookSortOption.NEWEST.toSort();
 
     private final BookRepository bookRepository;
+    private final SalesReport salesReport;
+    private final Clock clock;
 
-    public BookService(BookRepository bookRepository) {
+    public BookService(BookRepository bookRepository, SalesReport salesReport, Clock clock) {
         this.bookRepository = bookRepository;
+        this.salesReport = salesReport;
+        this.clock = clock;
     }
 
     /**
@@ -43,10 +53,20 @@ public class BookService {
     }
 
     /**
-     * Ranks by lifetime copies sold; a monthly window requires order history and is added with orders.
+     * Books ranked by copies sold in the current calendar month (UTC). Only paid, non-cancelled orders count, so
+     * early in a month, or in a quiet one, the list may be shorter than {@code limit} or empty.
      */
     public List<BookSummaryResponse> findBestsellers(int limit) {
-        return toSummaries(bookRepository.findBy(PageRequest.of(0, limit, BESTSELLER_ORDER)));
+        YearMonth month = YearMonth.now(clock);
+        Instant from = month.atDay(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+        Instant until = month.plusMonths(1).atDay(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+        List<Long> rankedIds = salesReport.topSellingBookIds(from, until, limit);
+        if (rankedIds.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Book> booksById = bookRepository.findWithCategoryByIdIn(rankedIds).stream()
+                .collect(Collectors.toMap(Book::getId, Function.identity()));
+        return rankedIds.stream().map(booksById::get).map(BookSummaryResponse::from).toList();
     }
 
     public List<BookSummaryResponse> findNewLaunches(int limit) {

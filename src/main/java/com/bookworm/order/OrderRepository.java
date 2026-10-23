@@ -1,6 +1,8 @@
 package com.bookworm.order;
 
+import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
@@ -35,4 +37,18 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """)
     boolean existsContainingBook(@Param("userId") Long userId, @Param("bookId") Long bookId,
                                  @Param("statuses") Collection<OrderStatus> statuses);
+
+    /**
+     * Ids of the books with the most copies in orders in one of the given statuses that were paid in
+     * {@code [from, until)}, most copies first.
+     */
+    @Query("""
+            select i.book.id from OrderItem i
+            where i.order.status in :statuses and i.order.paidAt >= :from and i.order.paidAt < :until
+            group by i.book.id
+            order by sum(i.quantity) desc, i.book.id asc
+            """)
+    List<Long> findTopSellingBookIds(@Param("statuses") Collection<OrderStatus> statuses,
+                                     @Param("from") Instant from, @Param("until") Instant until,
+                                     Pageable pageable);
 }

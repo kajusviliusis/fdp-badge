@@ -143,19 +143,20 @@ class OrderTest {
     void confirmPaymentConfirmsOrderCreditsPointsAndRecordsSales() {
         Order order = placeEarning(3, 0, 30);
 
-        order.confirmPayment();
+        order.confirmPayment(PLACED_AT);
 
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
         assertThat(user.getGiftPoints()).isEqualTo(130);
         assertThat(book.getCopiesSold()).isEqualTo(3);
+        assertThat(order.getPaidAt()).isEqualTo(PLACED_AT);
     }
 
     @Test
     void confirmPaymentTwiceIsRejectedSoPointsAreNotCreditedTwice() {
         Order order = placeEarning(3, 0, 30);
-        order.confirmPayment();
+        order.confirmPayment(PLACED_AT);
 
-        assertThatThrownBy(order::confirmPayment).isInstanceOf(BusinessRuleException.class);
+        assertThatThrownBy(() -> order.confirmPayment(PLACED_AT)).isInstanceOf(BusinessRuleException.class);
         assertThat(user.getGiftPoints()).isEqualTo(130);
         assertThat(book.getCopiesSold()).isEqualTo(3);
     }
@@ -174,7 +175,7 @@ class OrderTest {
     @Test
     void cancellingPaidOrderReversesEarnedPointsAndSales() {
         Order order = placeEarning(3, 40, 30);
-        order.confirmPayment();
+        order.confirmPayment(PLACED_AT);
 
         order.cancel(PLACED_AT.plusSeconds(3600));
 
@@ -187,7 +188,7 @@ class OrderTest {
     @Test
     void cancellingPaidOrderNeverDrivesPointsBelowZero() {
         Order order = placeEarning(3, 0, 30);
-        order.confirmPayment();
+        order.confirmPayment(PLACED_AT);
         user.deductGiftPoints(user.getGiftPoints() - 10);
 
         order.cancel(PLACED_AT);
