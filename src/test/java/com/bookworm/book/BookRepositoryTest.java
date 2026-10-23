@@ -7,16 +7,17 @@ import java.util.List;
 
 import com.bookworm.category.Category;
 import com.bookworm.publisher.Publisher;
+import com.bookworm.support.PostgresDataJpaTest;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
-@DataJpaTest
+@PostgresDataJpaTest
 class BookRepositoryTest {
 
     @Autowired
@@ -43,17 +44,67 @@ class BookRepositoryTest {
         persist("Joy of Minimalism", "Daniel Reed", "100.00", fiction, penguin, 5, 10);
         persist("Cosmos", "Carl Sagan", "200.00", science, abc, 5, 20);
 
-        assertThat(titles(search(criteria("MINIMAL", null, null, null, null, null, null)))).containsExactly("Joy of Minimalism");
+        assertThat(titles(search(criteria("MINIMALISM", null, null, null, null, null, null)))).containsExactly("Joy of Minimalism");
         assertThat(titles(search(criteria("sagan", null, null, null, null, null, null)))).containsExactly("Cosmos");
     }
 
     @Test
-    void searchTreatsLikeWildcardsLiterally() {
-        persist("100% Pure", "Someone", "50.00", fiction, penguin, 1, 0);
-        persist("Another Book", "Someone Else", "50.00", fiction, penguin, 1, 0);
+    void searchMatchesStemmedWordsAndRequiresAllTerms() {
+        persist("Cooking for Beginners", "Anna Cook", "100.00", fiction, penguin, 5, 0);
+        persist("Cooking with Fire", "Mark Flame", "100.00", fiction, penguin, 5, 0);
 
-        assertThat(titles(search(criteria("%", null, null, null, null, null, null)))).containsExactly("100% Pure");
-        assertThat(search(criteria("_", null, null, null, null, null, null)).getTotalElements()).isZero();
+        assertThat(titles(search(criteria("cooks", null, null, null, null, null, null))))
+                .containsExactlyInAnyOrder("Cooking for Beginners", "Cooking with Fire");
+        assertThat(titles(search(criteria("cooking fire", null, null, null, null, null, null))))
+                .containsExactly("Cooking with Fire");
+    }
+
+    @Test
+    void searchSupportsWebSearchSyntaxAndNeverFailsOnArbitraryInput() {
+        persist("Pure Maths", "Someone", "50.00", fiction, penguin, 1, 0);
+        persist("Applied Maths", "Someone Else", "50.00", fiction, penguin, 1, 0);
+
+        assertThat(titles(search(criteria("maths -applied", null, null, null, null, null, null)))).containsExactly("Pure Maths");
+        assertThat(titles(search(criteria("\"pure maths\"", null, null, null, null, null, null)))).containsExactly("Pure Maths");
+        assertThat(search(criteria("%_'(&|!:*", null, null, null, null, null, null)).getTotalElements()).isZero();
+    }
+
+    @Test
+    void relevanceSortRanksBetterTextMatchesFirstThenPopularity() {
+        persist("Space", "Sagan Space", "10.00", science, abc, 1, 1);
+        persist("Space Opera", "Someone", "10.00", fiction, penguin, 1, 500);
+        persist("Space Space Space Odyssey", "Someone", "10.00", fiction, penguin, 1, 2);
+
+        Page<Book> results = bookRepository.findAll(
+                BookSpecifications.matching(criteria("space", null, null, null, null, null, null)),
+                PageRequest.of(0, 10));
+
+        assertThat(titles(results)).containsExactly("Space Space Space Odyssey", "Space", "Space Opera");
+    }
+
+    @Test
+    void relevanceSortWithoutTextFallsBackToPopularity() {
+        persist("Quiet", "A", "10.00", fiction, penguin, 1, 1);
+        persist("Loud", "B", "10.00", fiction, penguin, 1, 9);
+
+        BookSearchCriteria noText = criteria(null, null, null, null, null, null, null);
+
+        assertThat(noText.rankedByText()).isFalse();
+        assertThat(titles(search(noText))).containsExactly("Loud", "Quiet");
+    }
+
+    @Test
+    void textSearchCombinesWithFiltersAndPaginates() {
+        persist("Java Basics", "Ann", "100.00", science, abc, 1, 3);
+        persist("Java Advanced", "Ann", "300.00", science, abc, 1, 2);
+        persist("Java Cookbook", "Ann", "200.00", fiction, penguin, 1, 1);
+
+        Page<Book> page = bookRepository.findAll(
+                BookSpecifications.matching(criteria("java", science.getId(), null, null, null, null, null)),
+                PageRequest.of(0, 1));
+
+        assertThat(page.getTotalElements()).isEqualTo(2);
+        assertThat(titles(page)).containsExactly("Java Basics");
     }
 
     @Test
@@ -139,7 +190,8 @@ class BookRepositoryTest {
 
     private Page<Book> search(BookSearchCriteria criteria) {
         return bookRepository.findAll(BookSpecifications.matching(criteria),
-                PageRequest.of(criteria.page(), criteria.size(), criteria.sortBy().toSort()));
+                PageRequest.of(criteria.page(), criteria.size(),
+                        criteria.rankedByText() ? Sort.unsorted() : criteria.sortBy().toSort()));
     }
 
     private static BookSearchCriteria criteria(String q, Long categoryId, Long publisherId, String language,

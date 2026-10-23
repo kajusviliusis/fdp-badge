@@ -1,38 +1,64 @@
 package com.bookworm.book;
 
+import java.util.List;
 import java.util.Locale;
+
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Order;
 
 import org.springframework.data.jpa.domain.Specification;
 
 /**
  * Builds the dynamic {@code WHERE} clause for catalog searches. Absent criteria produce no predicate.
+ *
+ * <p>The text query uses PostgreSQL full-text search (see {@link FullTextSearchFunctionContributor}), so searches
+ * match on stemmed words rather than substrings.
  */
 final class BookSpecifications {
-
-    private static final char LIKE_ESCAPE = '\\';
 
     private BookSpecifications() {
     }
 
     static Specification<Book> matching(BookSearchCriteria criteria) {
         return Specification.allOf(
-                titleOrAuthorContains(criteria.q()),
+                matchesText(criteria.q()),
                 inCategory(criteria.categoryId()),
                 byPublisher(criteria.publisherId()),
                 inLanguage(criteria.language()),
                 hasFormat(criteria.format()),
                 priceAtLeast(criteria.minPrice()),
-                priceAtMost(criteria.maxPrice()));
+                priceAtMost(criteria.maxPrice()),
+                rankedByTextRelevance(criteria));
     }
 
-    private static Specification<Book> titleOrAuthorContains(String text) {
+    private static Specification<Book> matchesText(String text) {
         if (text == null) {
             return null;
         }
-        String pattern = "%" + escapeLike(text.toLowerCase(Locale.ROOT)) + "%";
-        return (root, query, cb) -> cb.or(
-                cb.like(cb.lower(root.get("title")), pattern, LIKE_ESCAPE),
-                cb.like(cb.lower(root.get("author")), pattern, LIKE_ESCAPE));
+        return (root, query, cb) -> cb.isTrue(cb.function(
+                FullTextSearchFunctionContributor.MATCH, Boolean.class,
+                root.get("title"), root.get("author"), cb.literal(text)));
+    }
+
+    /**
+     * Orders by {@code ts_rank} (then popularity) when the criteria ask for relevance ordering of a text query.
+     * Spring Data overwrites the query's {@code ORDER BY} with the {@code Pageable}'s sort when there is one, so
+     * this only takes effect with an unsorted pageable (see {@link BookSearchCriteria#rankedByText()}).
+     */
+    private static Specification<Book> rankedByTextRelevance(BookSearchCriteria criteria) {
+        if (!criteria.rankedByText()) {
+            return null;
+        }
+        return (root, query, cb) -> {
+            if (query.getResultType() != Long.class) {
+                Expression<Double> rank = cb.function(
+                        FullTextSearchFunctionContributor.RANK, Double.class,
+                        root.get("title"), root.get("author"), cb.literal(criteria.q()));
+                List<Order> order = List.of(cb.desc(rank), cb.desc(root.get("copiesSold")), cb.asc(root.get("id")));
+                query.orderBy(order);
+            }
+            return null;
+        };
     }
 
     private static Specification<Book> inCategory(Long categoryId) {
@@ -60,11 +86,4 @@ final class BookSpecifications {
         return max == null ? null : (root, query, cb) -> cb.lessThanOrEqualTo(root.get("price"), max);
     }
 
-    /** Prevents user-supplied {@code %} and {@code _} from acting as wildcards. */
-    private static String escapeLike(String value) {
-        return value
-                .replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_");
-    }
 }

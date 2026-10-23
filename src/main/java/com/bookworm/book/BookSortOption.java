@@ -8,7 +8,7 @@ import org.springframework.data.domain.Sort;
  */
 public enum BookSortOption {
 
-    /** Without a full-text engine, relevance falls back to popularity. */
+    /** Ranked by text relevance when a query is given (see {@link BookSpecifications}); otherwise by popularity. */
     RELEVANCE("relevance", Sort.by(Sort.Order.desc("copiesSold"), Sort.Order.asc("id"))),
     PRICE_ASC("price_asc", Sort.by(Sort.Order.asc("price"), Sort.Order.asc("id"))),
     PRICE_DESC("price_desc", Sort.by(Sort.Order.desc("price"), Sort.Order.asc("id"))),

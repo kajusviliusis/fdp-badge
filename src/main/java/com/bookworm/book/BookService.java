@@ -24,8 +24,13 @@ public class BookService {
         this.bookRepository = bookRepository;
     }
 
+    /**
+     * Searches the catalog. A text query matches title and author via full-text search; with {@code relevance}
+     * sorting it is ordered by text rank, which the specification applies itself (hence the unsorted pageable).
+     */
     public PageResponse<BookSummaryResponse> search(BookSearchCriteria criteria) {
-        Pageable pageable = PageRequest.of(criteria.page(), criteria.size(), criteria.sortBy().toSort());
+        Sort sort = criteria.rankedByText() ? Sort.unsorted() : criteria.sortBy().toSort();
+        Pageable pageable = PageRequest.of(criteria.page(), criteria.size(), sort);
         return PageResponse.of(
                 bookRepository.findAll(BookSpecifications.matching(criteria), pageable),
                 BookSummaryResponse::from);

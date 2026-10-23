@@ -33,6 +33,14 @@ public record BookSearchCriteria(
         size = size == null ? DEFAULT_PAGE_SIZE : size;
     }
 
+    /**
+     * Whether results are ordered by full-text relevance: a text query sorted by {@code relevance}. Without a text
+     * query there is nothing to rank by, so {@code relevance} falls back to popularity.
+     */
+    public boolean rankedByText() {
+        return q != null && sortBy == BookSortOption.RELEVANCE;
+    }
+
     @AssertTrue(message = "minPrice must not be greater than maxPrice")
     public boolean isPriceRangeValid() {
         return minPrice == null || maxPrice == null || minPrice.compareTo(maxPrice) <= 0;
