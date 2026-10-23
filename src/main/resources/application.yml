@@ -41,3 +41,7 @@ server:
     include-message: never
     include-stacktrace: never
     include-binding-errors: never
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
